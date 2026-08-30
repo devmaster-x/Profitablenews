@@ -1,7 +1,7 @@
 [tool.poetry]
-name = "app"
-version = "0.1.0"
-description = ""
+name = "news-scraper"
+version = "2.0.0"
+description = "Web3 news scraper: sentiment-aware profit scoring, clustering, and backtesting"
 authors = ["Devin AI <158243242+devin-ai-integration[bot]@users.noreply.github.com>"]
 readme = "README.md"
 
@@ -9,15 +9,39 @@ readme = "README.md"
 python = "^3.12"
 fastapi = {extras = ["standard"], version = "^0.116.1"}
 uvicorn = {extras = ["standard"], version = "^0.32.1"}
-psycopg = {extras = ["binary"], version = "^3.2.9"}
-selenium = "^4.34.2"
 beautifulsoup4 = "^4.13.4"
 requests = "^2.32.4"
 pydantic-settings = "^2.10.1"
 python-multipart = "^0.0.20"
 schedule = "^1.2.2"
+feedparser = "^6.0.11"
+sentence-transformers = "^5.6.1"
+scikit-learn = "^1.9.0"
+rapidfuzz = "^3.14.5"
+# numpy/scipy are imported directly (clustering, backtest accuracy stats) —
+# declared explicitly so a fresh install works even if the ML stack above
+# ever becomes optional. Versions align with sentence-transformers' own pins.
+numpy = ">=1.26"
+scipy = ">=1.11"
+
+# Optional: browser-based scraping of JS-rendered sources (techcrunch,
+# venturebeat). Install with `poetry install -E webscraping`.
+[tool.poetry.group.webscraping]
+optional = true
+
+[tool.poetry.group.webscraping.dependencies]
+selenium = "^4.34.2"
+
+[tool.poetry.extras]
+webscraping = ["selenium"]
 
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "pytest-cov (>=7.1.0,<8.0.0)"
+]

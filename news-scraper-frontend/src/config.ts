@@ -44,5 +44,10 @@ export const apiEndpoints = {
     stop: `${config.apiBaseUrl}/scheduler/stop`,
     status: `${config.apiBaseUrl}/scheduler/status`,
     runNow: `${config.apiBaseUrl}/scheduler/run-now`,
+  },
+  notifications: {
+    send: `${config.apiBaseUrl}/notifications/send`,
+    status: `${config.apiBaseUrl}/notifications/status`,
+    test: `${config.apiBaseUrl}/notifications/test`,
   }
 } 

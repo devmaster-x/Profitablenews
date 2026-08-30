@@ -1,0 +1,33 @@
+# Secrets — never commit. .env.example documents the variables.
+.env
+.env.*
+!.env.example
+
+# Data & runtime artifacts (the DB is rebuilt by scraping; back up separately)
+*.db
+*.db-journal
+*.sqlite3
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Node / frontend build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store

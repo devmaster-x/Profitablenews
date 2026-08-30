@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from 'react'
-import { TrendingUp, AlertTriangle, DollarSign, BarChart3, Target, Clock, TrendingDown } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { TrendingUp, AlertTriangle, DollarSign, BarChart3, Target, TrendingDown } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Progress } from '@/components/ui/progress'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { apiEndpoints } from '../config'
 
 interface ProfitOpportunity {

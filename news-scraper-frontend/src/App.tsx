@@ -1,29 +1,22 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, Newspaper, DollarSign, BarChart3, Filter, Search, RefreshCw, Target, AlertTriangle } from 'lucide-react'
+import { TrendingUp, Newspaper, DollarSign, BarChart3, Filter, Search, RefreshCw, LayoutGrid, List } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import { ProfitAnalysis } from './components/ProfitAnalysis'
-import { config, apiEndpoints } from './config'
+import { ArticleListView } from './components/ArticleListView'
+import { SlackNotifications } from './components/SlackNotifications'
+import { getSentimentColor, getProfitScoreColor, type NewsArticle } from './lib/article-utils'
+import { apiEndpoints } from './config'
 import './App.css'
 
-interface NewsArticle {
-  id: number
-  title: string
-  content: string
-  source: string
-  url?: string
-  category: string
-  sentiment: string
-  profit_score: number
-  keywords: string[]
-  created_at: string
-  updated_at: string
-}
+type ArticleViewMode = 'card' | 'list'
+type ArticleSort = 'date_desc' | 'date_asc' | 'score_desc' | 'score_asc'
 
 interface NewsStats {
   total_articles: number
@@ -41,18 +34,29 @@ function App() {
   const [selectedSentiment, setSelectedSentiment] = useState<string>('all')
   const [minProfitScore, setMinProfitScore] = useState<number>(0)
   const [currentPage, setCurrentPage] = useState(1)
-    const [totalPages, setTotalPages] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [viewMode, setViewMode] = useState<ArticleViewMode>(() => {
+    return localStorage.getItem('articleViewMode') === 'list' ? 'list' : 'card'
+  })
+  const [sort, setSort] = useState<ArticleSort>('date_desc')
+
+  useEffect(() => {
+    localStorage.setItem('articleViewMode', viewMode)
+  }, [viewMode])
 
   const fetchArticles = async () => {
     try {
       setLoading(true)
+      const [sortBy, order] = sort.split('_')
       const params = new URLSearchParams({
         page: currentPage.toString(),
         per_page: '12',
         ...(selectedCategory !== 'all' && { category: selectedCategory }),
         ...(selectedSentiment !== 'all' && { sentiment: selectedSentiment }),
         ...(minProfitScore > 0 && { min_profit_score: minProfitScore.toString() }),
-        ...(searchTerm && { search: searchTerm })
+        ...(searchTerm && { search: searchTerm }),
+        sort_by: sortBy,
+        order,
       })
 
       const response = await fetch(`${apiEndpoints.articles}?${params}`)
@@ -93,25 +97,7 @@ function App() {
   useEffect(() => {
     fetchArticles()
     fetchStats()
-  }, [currentPage, selectedCategory, selectedSentiment, minProfitScore, searchTerm])
-
-  const getSentimentColor = (sentiment: string) => {
-    switch (sentiment) {
-      case 'very_positive': return 'bg-green-500'
-      case 'positive': return 'bg-green-300'
-      case 'neutral': return 'bg-gray-300'
-      case 'negative': return 'bg-red-300'
-      case 'very_negative': return 'bg-red-500'
-      default: return 'bg-gray-300'
-    }
-  }
-
-  const getProfitScoreColor = (score: number) => {
-    if (score >= 8) return 'text-green-600 font-bold'
-    if (score >= 6) return 'text-green-500'
-    if (score >= 4) return 'text-yellow-500'
-    return 'text-red-500'
-  }
+  }, [currentPage, selectedCategory, selectedSentiment, minProfitScore, searchTerm, sort])
 
   const chartData = stats ? Object.entries(stats.categories).map(([category, count]) => ({
     category: category.replace('_', ' ').toUpperCase(),
@@ -189,6 +175,7 @@ function App() {
             <TabsTrigger value="articles">Articles</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
             <TabsTrigger value="profit-analysis">Profit Analysis</TabsTrigger>
+            <TabsTrigger value="notifications">Slack Notifications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="articles" className="space-y-6">
@@ -254,11 +241,59 @@ function App() {
               </CardContent>
             </Card>
 
+            {/* Articles Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-gray-500">
+                {articles.length} article{articles.length === 1 ? '' : 's'}
+              </p>
+              <div className="flex items-center gap-3">
+                <Select value={sort} onValueChange={(value) => setSort(value as ArticleSort)}>
+                  <SelectTrigger className="w-[170px]">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="date_desc">Newest first</SelectItem>
+                    <SelectItem value="date_asc">Oldest first</SelectItem>
+                    <SelectItem value="score_desc">Highest score</SelectItem>
+                    <SelectItem value="score_asc">Lowest score</SelectItem>
+                  </SelectContent>
+                </Select>
+                <ToggleGroup
+                  type="single"
+                  variant="outline"
+                  size="sm"
+                  value={viewMode}
+                  onValueChange={(value) => {
+                    if (value) setViewMode(value as ArticleViewMode)
+                  }}
+                >
+                  <ToggleGroupItem value="card" aria-label="Card view" title="Card view">
+                    <LayoutGrid className="h-4 w-4" />
+                  </ToggleGroupItem>
+                  <ToggleGroupItem value="list" aria-label="List view" title="List view">
+                    <List className="h-4 w-4" />
+                  </ToggleGroupItem>
+                </ToggleGroup>
+              </div>
+            </div>
+
             {/* Articles Grid */}
             {loading ? (
               <div className="flex justify-center items-center py-12">
                 <RefreshCw className="h-8 w-8 animate-spin text-blue-600" />
               </div>
+            ) : articles.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-zinc-300 py-16 text-center">
+                <Newspaper className="mb-2 h-8 w-8 text-zinc-400" />
+                <p className="text-sm text-zinc-500">
+                  No articles match the current filters.
+                </p>
+                <p className="mt-1 text-xs text-zinc-400">
+                  Adjust your filters or click &quot;Refresh Data&quot; to scrape new articles.
+                </p>
+              </div>
+            ) : viewMode === 'list' ? (
+              <ArticleListView articles={articles} />
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {articles.map((article) => (
@@ -377,6 +412,10 @@ function App() {
 
           <TabsContent value="profit-analysis" className="space-y-6">
             <ProfitAnalysis />
+          </TabsContent>
+
+          <TabsContent value="notifications" className="space-y-6">
+            <SlackNotifications />
           </TabsContent>
         </Tabs>
       </div>

@@ -1,0 +1,382 @@
+===============================================================================
+SLACK NOTIFICATIONS ARCHITECTURE DIAGRAM
+===============================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           USER INTERFACE (Frontend)                      │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                    ┌───────────────┼───────────────┐
+                    │               │               │
+                    ▼               ▼               ▼
+        ┌───────────────┐  ┌───────────────┐  ┌───────────────┐
+        │   Articles    │  │   Analytics   │  │ Slack Notifs  │ ◄── NEW!
+        │      Tab      │  │      Tab      │  │      Tab      │
+        └───────────────┘  └───────────────┘  └───────────────┘
+                                                       │
+                                                       │ REST API Calls
+                                                       ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        API LAYER (FastAPI Backend)                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │              notifications.py (Router) ◄── NEW!                 │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │  POST /notifications/send    → Send alerts to Slack            │    │
+│  │  GET  /notifications/status  → Check pending notifications      │    │
+│  │  POST /notifications/test    → Send test message               │    │
+│  │  POST /notifications/reset   → Reset sent status               │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                             │                                            │
+│                             ▼                                            │
+│  ┌────────────────────────────────────────────────────────────────┐    │
+│  │           slack_notifier.py (Service Layer) ◄── NEW!           │    │
+│  ├────────────────────────────────────────────────────────────────┤    │
+│  │  • build_message_blocks()  → Format Slack messages             │    │
+│  │  • send_notification()     → HTTP POST to Slack webhook        │    │
+│  │  • get_score_emoji()       → Add visual indicators             │    │
+│  │  • format_sentiment()      → Sentiment formatting              │    │
+│  └────────────────────────────────────────────────────────────────┘    │
+│                             │                                            │
+└─────────────────────────────┼────────────────────────────────────────────┘
+                              │
+                    ┌─────────┴─────────┐
+                    ▼                   ▼
+        ┌───────────────────┐  ┌───────────────────┐
+        │   Database Layer  │  │   External API    │
+        │   (SQLite)        │  │   (Slack)         │
+        └───────────────────┘  └───────────────────┘
+
+===============================================================================
+DATA FLOW: SENDING NOTIFICATIONS
+===============================================================================
+
+  1. USER ACTION
+     └─> User clicks "Send to Slack" button in UI
+  
+  2. FRONTEND
+     └─> React component calls: POST /notifications/send?min_score=5.0
+  
+  3. API ROUTER (notifications.py)
+     └─> Receives request
+     └─> Calls: db.get_unsent_high_profit_articles(min_score=5.0)
+  
+  4. DATABASE (persistent_database.py)
+     └─> Query: SELECT * FROM articles 
+                WHERE profit_score >= 5.0 
+                AND slack_notified = 0
+     └─> Returns: List of unsent articles
+  
+  5. SLACK NOTIFIER (slack_notifier.py)
+     └─> Receives articles list
+     └─> Builds Slack Block Kit message
+     └─> HTTP POST to webhook URL
+  
+  6. SLACK API
+     └─> Receives formatted message
+     └─> Posts to configured channel
+     └─> Returns: 200 OK
+  
+  7. DATABASE UPDATE
+     └─> Marks articles as sent
+     └─> UPDATE articles SET slack_notified = 1 WHERE id IN (...)
+  
+  8. API RESPONSE
+     └─> Returns: {"success": true, "sent_count": 3, ...}
+  
+  9. FRONTEND UPDATE
+     └─> Shows success alert
+     └─> Refreshes status (pending count decreases)
+     └─> Updates UI to show 0 pending
+
+===============================================================================
+DATABASE SCHEMA
+===============================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          articles TABLE                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  id                    INTEGER PRIMARY KEY                               │
+│  title                 TEXT NOT NULL                                     │
+│  content               TEXT NOT NULL                                     │
+│  source                TEXT NOT NULL                                     │
+│  url                   TEXT                                              │
+│  category              TEXT NOT NULL                                     │
+│  sentiment             TEXT                                              │
+│  profit_score          REAL                                              │
+│  keywords              TEXT                                              │
+│  created_at            TIMESTAMP                                         │
+│  updated_at            TIMESTAMP                                         │
+│  ... (other columns)                                                     │
+│  slack_notified        INTEGER DEFAULT 0        ◄── NEW COLUMN!         │
+│                        (0 = not sent, 1 = sent)                          │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Query Examples:
+  
+  Unsent articles:  WHERE slack_notified = 0 AND profit_score >= 5.0
+  Sent articles:    WHERE slack_notified = 1
+  Reset status:     UPDATE ... SET slack_notified = 0 WHERE id IN (...)
+
+===============================================================================
+SLACK MESSAGE FORMAT (Block Kit)
+===============================================================================
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ 🚀 High-Profit News Alerts                                    [HEADER]  │
+├─────────────────────────────────────────────────────────────────────────┤
+│ 3 high-scoring news article(s) detected (Score ≥ 5.0)       [CONTEXT]  │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 1. Major Tech Company Acquires AI Startup                    [ARTICLE]  │
+│    Profit Score: ⭐ 8.5/10        Source: TechCrunch                    │
+│    Category: Market               Sentiment: 😄 Very Positive           │
+│                                                                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 2. Cryptocurrency Regulation Changes Approved                           │
+│    Profit Score: 🔥 9.2/10        Source: Bloomberg                     │
+│    Category: Crypto               Sentiment: 🙂 Positive                │
+│                                                                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                          │
+│ 3. New Investment Opportunity in Cloud Computing                        │
+│    Profit Score: 📈 7.8/10        Source: WSJ                           │
+│    Category: Software             Sentiment: 🙂 Positive                │
+│                                                                          │
+├─────────────────────────────────────────────────────────────────────────┤
+│ Sent at 2025-08-13 14:30:00 UTC                              [FOOTER]  │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Score Emojis:
+  🔥 9.0+     ⭐ 8.0-8.9    📈 7.0-7.9    💡 6.0-6.9    📊 5.0-5.9
+
+Sentiment Emojis:
+  😄 Very Positive    🙂 Positive    😐 Neutral    😟 Negative    😞 Very Negative
+
+===============================================================================
+COMPONENT INTERACTION DIAGRAM
+===============================================================================
+
+Frontend Component:
+┌──────────────────────────────────────────────────────────────┐
+│              SlackNotifications.tsx                          │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  State Management:                                           │
+│  • status: NotificationStatus | null                         │
+│  • loading: boolean                                          │
+│  • sending: boolean                                          │
+│  • lastResult: NotificationResponse | null                   │
+│                                                              │
+│  Effects:                                                    │
+│  • useEffect(() => fetchStatus(), [])                        │
+│  • setInterval(fetchStatus, 30000) [auto-refresh]           │
+│                                                              │
+│  Event Handlers:                                             │
+│  • sendNotifications() → POST /notifications/send           │
+│  • testNotification()  → POST /notifications/test           │
+│  • fetchStatus()       → GET  /notifications/status         │
+│                                                              │
+│  UI Elements:                                                │
+│  • Pending counter with animated badge                       │
+│  • Send button (disabled when sending/empty)                │
+│  • Test button (disabled when sending)                       │
+│  • Success/error alerts with icons                           │
+│  • Scrollable article preview list                           │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+Backend Service:
+┌──────────────────────────────────────────────────────────────┐
+│                SlackNotifier Class                           │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Initialization:                                             │
+│  • webhook_url from settings                                 │
+│  • Singleton pattern (get_slack_notifier())                  │
+│                                                              │
+│  Public Methods:                                             │
+│  • send_notification(articles) → Dict[success, message]      │
+│                                                              │
+│  Private Methods:                                            │
+│  • _build_message_blocks(articles) → List[Block]            │
+│  • _build_article_block(article, idx) → List[Block]         │
+│  • _get_score_emoji(score) → str                            │
+│  • _format_sentiment(sentiment) → str                       │
+│                                                              │
+│  Error Handling:                                             │
+│  • urllib.error.URLError → Network error                     │
+│  • HTTP status != 200 → API error                           │
+│  • Missing webhook → Configuration error                     │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+
+===============================================================================
+CONFIGURATION FLOW
+===============================================================================
+
+Environment File (.env):
+  SLACK_NOTIFICATION_WEBHOOK=https://hooks.slack.com/services/...
+                    │
+                    ▼
+Settings Class (config.py):
+  slack_notification_webhook: Optional[str] = None
+                    │
+                    ▼
+SlackNotifier Class (slack_notifier.py):
+  webhook_url = settings.slack_notification_webhook
+                    │
+                    ▼
+HTTP Request:
+  urllib.request.Request(webhook_url, data=payload)
+                    │
+                    ▼
+Slack Webhook:
+  Processes and posts message to channel
+
+===============================================================================
+ERROR HANDLING FLOW
+===============================================================================
+
+Try Block:
+  └─> Send HTTP request to Slack
+      │
+      ├─> Success (200 OK)
+      │   └─> Mark articles as sent
+      │   └─> Return success response
+      │
+      ├─> Network Error (URLError)
+      │   └─> Return error: "Network error: ..."
+      │
+      ├─> Slack API Error (status != 200)
+      │   └─> Return error: "Slack API returned status ..."
+      │
+      └─> Other Exception
+          └─> Return error: "Failed to send notification: ..."
+
+Frontend Display:
+  └─> Success response
+      └─> Show green checkmark alert
+      └─> Refresh status
+  
+  └─> Error response
+      └─> Show red X alert
+      └─> Keep pending count
+      └─> Don't mark articles as sent
+
+===============================================================================
+SECURITY CONSIDERATIONS
+===============================================================================
+
+✅ Webhook URL stored in environment variable (not in code)
+✅ No sensitive data exposed in API responses
+✅ Proper error handling (no stack traces to frontend)
+✅ Database transaction locks for concurrent requests
+✅ Input validation with Pydantic models
+✅ Query parameter validation (min_score range: 0-10)
+✅ No SQL injection (parameterized queries)
+✅ CORS configured for specific origins
+✅ Timeout on HTTP requests (10 seconds)
+
+⚠️  Keep webhook URL secret!
+⚠️  Don't commit .env file to version control
+⚠️  Rotate webhook if exposed
+
+===============================================================================
+PERFORMANCE CONSIDERATIONS
+===============================================================================
+
+Database:
+  • Index on profit_score for faster queries ✅
+  • Index on slack_notified for filtering ✅
+  • Efficient UPDATE queries with IN clause ✅
+  • No N+1 queries (batch operations) ✅
+
+Network:
+  • Single HTTP request per batch (not per article) ✅
+  • 10-second timeout to prevent hangs ✅
+  • No retry logic (fail fast) ✅
+
+Frontend:
+  • Auto-refresh limited to 30 seconds ✅
+  • Loading states to prevent double-sends ✅
+  • Debounced button clicks ✅
+  • Efficient React hooks (no memory leaks) ✅
+
+Scalability:
+  • Thread-safe database operations (locks) ✅
+  • Singleton pattern for notifier ✅
+  • Pagination possible for large article lists ✅
+  • Batch size can be limited if needed ✅
+
+===============================================================================
+TESTING SCENARIOS
+===============================================================================
+
+✅ Scenario 1: Fresh Install
+   - Database migration creates slack_notified column
+   - All articles have slack_notified = 0
+   - Status shows all high-profit articles as pending
+
+✅ Scenario 2: Send Notifications
+   - User clicks "Send to Slack"
+   - Articles are sent and marked as slack_notified = 1
+   - Status updates to show 0 pending
+   - Slack channel receives formatted message
+
+✅ Scenario 3: New Articles
+   - Scraper adds new high-profit articles
+   - New articles have slack_notified = 0
+   - Status shows new articles as pending
+   - Old articles remain marked as sent
+
+✅ Scenario 4: No Webhook Configured
+   - API returns error: "Slack webhook URL not configured"
+   - Frontend shows error alert
+   - No database changes
+
+✅ Scenario 5: Network Error
+   - HTTP request times out or fails
+   - API returns error with details
+   - Articles remain unsent (slack_notified = 0)
+   - User can retry
+
+✅ Scenario 6: Test Mode
+   - User clicks "Test Notification"
+   - Sample message sent to Slack
+   - No articles marked as sent
+   - Success message indicates "(Test)"
+
+===============================================================================
+MAINTENANCE & MONITORING
+===============================================================================
+
+Health Checks:
+  • Test endpoint: POST /notifications/test
+  • Status endpoint: GET /notifications/status
+  • Database query: SELECT COUNT(*) FROM articles WHERE slack_notified = 1
+
+Logs to Monitor:
+  • Backend console: FastAPI request logs
+  • Slack webhook responses
+  • Database errors (if any)
+  • Frontend console: React errors
+
+Metrics to Track:
+  • Total notifications sent
+  • Success rate (sent vs failed)
+  • Average articles per notification
+  • Pending notification count
+  • Notification frequency
+
+Manual Maintenance:
+  • Reset sent status: POST /notifications/reset
+  • Database cleanup: DELETE old articles if needed
+  • Webhook rotation: Update .env and restart
+
+===============================================================================
+
+🎉 END OF ARCHITECTURE DIAGRAM 🎉
+

@@ -4,8 +4,7 @@ Database Inspection Script
 Run this to check what's in the in-memory database
 """
 
-from app.database import db
-from app.models import NewsCategory, SentimentScore
+from news_scraper.database import db
 
 def check_database():
     """Check the current state of the database"""
@@ -58,7 +57,7 @@ def check_database():
         print(f"   {sentiment}: {count}")
     
     if profit_scores:
-        print(f"\n💰 Profit Score Analysis:")
+        print("\n💰 Profit Score Analysis:")
         print(f"   Average: {sum(profit_scores) / len(profit_scores):.2f}")
         print(f"   Highest: {max(profit_scores):.2f}")
         print(f"   Lowest: {min(profit_scores):.2f}")
@@ -66,7 +65,7 @@ def check_database():
         print(f"   Articles with score ≥ 8.0: {len([s for s in profit_scores if s >= 8.0])}")
     
     # Show recent articles
-    print(f"\n🕒 Recent Articles (last 5):")
+    print("\n🕒 Recent Articles (last 5):")
     recent_articles = sorted(articles, key=lambda x: x.created_at, reverse=True)[:5]
     for i, article in enumerate(recent_articles, 1):
         print(f"   {i}. {article.title[:60]}...")
@@ -75,7 +74,7 @@ def check_database():
     # Show high-profit opportunities
     opportunities = db.get_profit_opportunities(min_score=7.0, limit=5)
     if opportunities:
-        print(f"\n🎯 High-Profit Opportunities (Score ≥ 7.0):")
+        print("\n🎯 High-Profit Opportunities (Score ≥ 7.0):")
         for i, opp in enumerate(opportunities, 1):
             print(f"   {i}. {opp['title'][:60]}...")
             print(f"      Score: {opp['profit_score']:.1f}, Category: {opp['category']}, Source: {opp['source']}")
