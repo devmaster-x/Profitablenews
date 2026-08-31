@@ -56,6 +56,24 @@ class AssetExtractor:
             'maker': {'symbol': 'MKR', 'type': 'crypto', 'coingecko_id': 'maker'},
             'makerdao': {'symbol': 'MKR', 'type': 'crypto', 'coingecko_id': 'maker'},
             'lido': {'symbol': 'LDO', 'type': 'crypto', 'coingecko_id': 'lido-dao'},
+            'gmx': {'symbol': 'GMX', 'type': 'crypto', 'coingecko_id': 'gmx'},
+            'pendle': {'symbol': 'PENDLE', 'type': 'crypto', 'coingecko_id': 'pendle'},
+            'dydx': {'symbol': 'DYDX', 'type': 'crypto', 'coingecko_id': 'dydx-chain'},
+            # Base/Arbitrum long tail — the tokens the trading system's Track B
+            # DEX collector watches; needed so its news-uplift join can fire on
+            # them. Ambiguous bare words (degen, brett, magic, virtual, aero)
+            # follow the exclusion policy above and use qualified keywords.
+            'aerodrome': {'symbol': 'AERO', 'type': 'crypto', 'coingecko_id': 'aerodrome-finance'},
+            'degen token': {'symbol': 'DEGEN', 'type': 'crypto', 'coingecko_id': 'degen-base'},
+            'degen chain': {'symbol': 'DEGEN', 'type': 'crypto', 'coingecko_id': 'degen-base'},
+            'based brett': {'symbol': 'BRETT', 'type': 'crypto', 'coingecko_id': 'based-brett'},
+            'brett token': {'symbol': 'BRETT', 'type': 'crypto', 'coingecko_id': 'based-brett'},
+            'toshi': {'symbol': 'TOSHI', 'type': 'crypto', 'coingecko_id': 'toshi'},
+            'virtuals protocol': {'symbol': 'VIRTUAL', 'type': 'crypto', 'coingecko_id': 'virtual-protocol'},
+            'virtual protocol': {'symbol': 'VIRTUAL', 'type': 'crypto', 'coingecko_id': 'virtual-protocol'},
+            'virtuals': {'symbol': 'VIRTUAL', 'type': 'crypto', 'coingecko_id': 'virtual-protocol'},
+            'treasure dao': {'symbol': 'MAGIC', 'type': 'crypto', 'coingecko_id': 'magic'},
+            'magic token': {'symbol': 'MAGIC', 'type': 'crypto', 'coingecko_id': 'magic'},
             # Crypto-adjacent stocks
             'coinbase': {'symbol': 'COIN', 'type': 'stock', 'yahoo_symbol': 'COIN'},
             'microstrategy': {'symbol': 'MSTR', 'type': 'stock', 'yahoo_symbol': 'MSTR'},
