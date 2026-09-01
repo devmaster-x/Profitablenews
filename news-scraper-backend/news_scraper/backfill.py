@@ -66,10 +66,23 @@ def main() -> int:
     parser.add_argument("--days", type=int, default=35, help="How far back to sweep")
     parser.add_argument("--chunk-hours", type=int, default=24, help="Window width per batch")
     parser.add_argument(
-        "--min-age-hours", type=int, default=168,
-        help="Skip articles younger than this (their 7d outcome doesn't exist yet)",
+        "--min-age-hours", type=int, default=24,
+        help=(
+            "Skip articles younger than this. 24 (default) captures 1h/24h outcomes "
+            "immediately; the daily 7d scheduled job re-stores each row once its 7d "
+            "outcome exists, so partial rows self-complete. Use 168 to only store "
+            "rows that are already 7d-complete."
+        ),
     )
     args = parser.parse_args()
+
+    if args.days * 24 <= args.min_age_hours:
+        logging.error(
+            "nothing to do: --days %s (%sh) is entirely inside --min-age-hours %s — "
+            "raise --days or lower --min-age-hours",
+            args.days, args.days * 24, args.min_age_hours,
+        )
+        return 1
 
     summary = asyncio.run(backfill(args.days, args.chunk_hours, args.min_age_hours))
     return 0 if summary["chunks"] > 0 else 1
