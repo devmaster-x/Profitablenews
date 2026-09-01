@@ -54,7 +54,10 @@ class NewsScrapingScheduler:
             schedule.every().day.at(scrape_time).do(self._run_scraping_job)
             logger.info("Scheduled daily news scraping at %s", scrape_time)
 
-        # Phase 3: backtest jobs (24h window daily, 7d window daily)
+        # Phase 3: backtest jobs — each daily run sweeps the trailing
+        # backtest_window_hours of articles at 24h/7d lag, so days tile with
+        # no gaps (the 7d run re-stores rows, filling in price_7d — the
+        # UNIQUE(article_id, asset_symbol) upsert keeps this idempotent).
         if settings.backtest_enabled:
             schedule.every().day.at(settings.backtest_time_24h).do(self._run_backtest_job, hours_ago=24)
             schedule.every().day.at(settings.backtest_time_7d).do(self._run_backtest_job, hours_ago=168)
@@ -75,7 +78,9 @@ class NewsScrapingScheduler:
         try:
             from news_scraper.backtester import backtester
 
-            result = loop.run_until_complete(backtester.backtest_batch(hours_ago))
+            result = loop.run_until_complete(
+                backtester.backtest_batch(hours_ago, window_hours=settings.backtest_window_hours)
+            )
             logger.info("Scheduled backtest completed: %s", result)
             self._update_next_run_time()
             return result

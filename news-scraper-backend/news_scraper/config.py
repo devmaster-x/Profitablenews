@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     backtest_enabled: bool = True
     backtest_time_24h: str = "02:00"  # daily: backtest articles from 24h ago
     backtest_time_7d: str = "14:00"   # daily: backtest articles from 7d ago
+    # Width of the article window each daily job sweeps. Must be 24 for the
+    # daily jobs to tile full days back-to-back; a smaller value leaves the
+    # remaining (24 - N) hours of each day permanently un-backtested, which
+    # starves the Gate C forward test of score/return pairs.
+    backtest_window_hours: int = 24
     backtest_rate_limit_delay: float = 1.5  # seconds between CoinGecko calls
 
     # CORS ---------------------------------------------------------------

@@ -235,6 +235,31 @@ class TestBacktester:
         # 1 BTC reference fetch + 1 asset fetch per article
         assert fetcher.calls.count("bitcoin") == 1 + 3
 
+    def test_scheduled_job_sweeps_full_day_window(self, monkeypatch):
+        """The daily jobs must pass backtest_window_hours (24) so consecutive
+        days tile with no gaps — the 1h default once left 23/24 of each day's
+        articles permanently un-backtested, starving the Gate C forward test."""
+        from news_scraper import backtester as backtester_module
+        from news_scraper.config import settings
+        from news_scraper.scheduler import NewsScrapingScheduler
+
+        calls = []
+
+        async def fake_batch(hours_ago, window_hours=1, skip_existing=False):
+            calls.append({"hours_ago": hours_ago, "window_hours": window_hours})
+            return {"articles": 0, "results_stored": 0}
+
+        monkeypatch.setattr(backtester_module.backtester, "backtest_batch", fake_batch)
+        scheduler = NewsScrapingScheduler()
+        scheduler._run_backtest_job(hours_ago=24)
+        scheduler._run_backtest_job(hours_ago=168)
+
+        assert settings.backtest_window_hours == 24
+        assert calls == [
+            {"hours_ago": 24, "window_hours": 24},
+            {"hours_ago": 168, "window_hours": 24},
+        ]
+
 
 # ------------------------------------------------------------------
 # Analytics queries (seeded data)
