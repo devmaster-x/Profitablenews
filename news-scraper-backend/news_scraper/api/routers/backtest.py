@@ -43,6 +43,7 @@ async def get_backtest_accuracy(
             "correlation": stats.get("correlation"),
             "p_value": stats.get("p_value"),
             "total_samples": stats.get("total_samples"),
+            "total_clusters": stats.get("total_clusters"),
             "avg_predicted_score": stats.get("avg_predicted"),
             "avg_excess_movement": stats.get("avg_actual"),
             "score_buckets": stats.get("score_buckets"),

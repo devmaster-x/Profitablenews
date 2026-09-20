@@ -310,6 +310,41 @@ class TestAnalytics:
         assert buckets["8-10"]["count"] == 4  # scores 8, 9, 10, 11
         assert buckets["8-10"]["avg_movement"] > buckets["0-2"]["avg_movement"]
 
+    def test_accuracy_declusters_same_event_articles(self, tmp_db_path):
+        """Articles covering the same asset in the same window share one market
+        outcome; scoring each as an independent sample inflates N and can
+        manufacture (or invert) significance that a per-event view doesn't
+        support (the exact failure mode DECISIONS.md 2026-08-30/2026-09-19
+        document). 20 near-duplicate articles all landing on one real event
+        (i=0 of 10) flip the *raw* per-row correlation negative (rho=-0.70,
+        verified separately); de-clustering to one row per event recovers the
+        true positive relationship underneath (rho=+0.564)."""
+        db = PersistentDatabase(tmp_db_path)
+        _seed_accuracy_rows(db, n=10)  # 10 independent events, real signal (rho=1)
+
+        # Flood one event (excess=0, from row i=0) with 20 near-duplicate articles
+        # whose scores disagree with the real trend, at record-count-only weight.
+        for j in range(20):
+            article = db.create_article(NewsArticleCreate(
+                title=f"Noise article {j}", content="content", source="coindesk_rss",
+                url=f"http://example.com/noise/{j}", category=NewsCategory.CRYPTO,
+                profit_score=5.0, keywords=["etf"],
+            ))
+            db.store_backtest_result({
+                "article_id": article.id, "asset_symbol": "BTC", "asset_type": "crypto",
+                "predicted_score": 9.0,  # high score paired with the lowest excess (i=0)
+                "price_at_publish": 100, "price_1h": 100, "price_24h": 100, "price_7d": 100,
+                "pct_change_1h": 0.0, "pct_change_24h": 0.0, "pct_change_7d": 0.0,
+                "btc_pct_change_1h": 0.0, "btc_pct_change_24h": 0.0, "btc_pct_change_7d": 0.0,
+                "backtested_at": datetime.utcnow(), "data_source": "test",
+            })
+
+        stats = db.get_backtest_accuracy("24h", min_samples=10)
+        assert stats["total_samples"] == 30        # 10 real events + 20 duplicate articles
+        assert stats["total_clusters"] == 10       # duplicates collapse to the one event they share
+        assert stats["correlation"] == pytest.approx(0.5636363636, abs=1e-6)  # true signal recovered
+        assert stats["correlation"] > 0            # raw (un-declustered) rho on these 30 rows is -0.70
+
     def test_keyword_performance_uses_json_keywords(self, tmp_db_path):
         db = PersistentDatabase(tmp_db_path)
         _seed_accuracy_rows(db, n=6)  # all carry keyword 'etf'

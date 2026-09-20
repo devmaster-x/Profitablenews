@@ -770,6 +770,14 @@ class PersistentDatabase:
         Validation uses excess return vs market (BTC): raw price change is
         dominated by market beta. Column names are taken from a fixed map —
         never interpolated from user input.
+
+        Rows are de-clustered before correlation: articles covering the same
+        asset in the same window share one market outcome, so scoring each
+        article as an independent sample inflates N and deflates p (see
+        decluster_check.py and DECISIONS.md 2026-08-30 / 2026-09-19 in the
+        trading-system repo, where the un-declustered historical backtest and
+        this same live endpoint both produced a correlation that did not
+        survive collapsing same-event articles to one row).
         """
         window_map = {
             "1h": ("pct_change_1h", "btc_pct_change_1h"),
@@ -781,20 +789,24 @@ class PersistentDatabase:
         with closing(sqlite3.connect(self.db_path)) as conn:
             cursor = conn.cursor()
             cursor.execute(f"""
-                SELECT predicted_score, ({col} - {btc_col}) as excess_movement
+                SELECT predicted_score, asset_symbol, ROUND({col} - {btc_col}, 3) as excess_movement
                 FROM backtest_results
                 WHERE {col} IS NOT NULL AND {btc_col} IS NOT NULL
             """)
-            data = cursor.fetchall()
+            rows = cursor.fetchall()
 
-        if len(data) < min_samples:
-            return {"error": "Insufficient data", "total_samples": len(data)}
+        if len(rows) < min_samples:
+            return {"error": "Insufficient data", "total_samples": len(rows)}
 
         import numpy as np
         from scipy.stats import spearmanr
 
-        predicted = [row[0] for row in data]
-        actual = [row[1] for row in data]
+        clusters: Dict[tuple, list] = {}
+        for score, symbol, excess in rows:
+            clusters.setdefault((symbol, excess), []).append(score)
+
+        predicted = [float(np.mean(scores)) for scores in clusters.values()]
+        actual = [key[1] for key in clusters.keys()]
 
         correlation, p_value = spearmanr(predicted, actual)
         buckets = self._calculate_score_buckets(predicted, actual)
@@ -802,7 +814,8 @@ class PersistentDatabase:
         return {
             "correlation": float(correlation),
             "p_value": float(p_value),
-            "total_samples": len(data),
+            "total_samples": len(rows),
+            "total_clusters": len(predicted),
             "avg_predicted": float(np.mean(predicted)),
             "avg_actual": float(np.mean(actual)),
             "score_buckets": buckets,
